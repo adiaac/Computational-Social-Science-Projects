@@ -1,0 +1,15 @@
+(base) MacBook-Pro-14-inch-2021:~ alexadia$ cd /Users/alexadia/Documents/GitHub/Computational-Social-Science-Projects/
+(base) MacBook-Pro-14-inch-2021:Project 1 alexadia$ mkdir Project1
+(base) MacBook-Pro-14-inch-2021:~ alexadia$ cd /Users/alexadia/Documents/GitHub/Computational-Social-Science-Projects/Project1
+(base) MacBook-Pro-14-inch-2021:Project 1 alexadia$ touch commands.txt
+(base) MacBook-Pro-14-inch-2021:Project 1 alexadia$ nano commands.txt
+
+
+
+
+I cloned the repo already but if I hadn't I'd run: git clone https://github.com/Computational-Social-Science-Projects.git
+
+Then after the above:
+git add *
+git commit -m "adding commands.txt"
+git push
