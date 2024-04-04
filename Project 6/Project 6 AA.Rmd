@@ -137,6 +137,7 @@ Henderson/Chatfield argue that an improperly specified propensity score model ca
 # Remove post-treatment covariates
 sim_df<-ypsps%>%
   select(-starts_with("student_1973"))%>%select(-starts_with("student_1982"))
+
 # Randomly select features
 
 # Simulate random selection of features 10k+ times
