@@ -25,6 +25,8 @@ Otherwise, we also have covariates measured for survey responses to various ques
 # Feel free to load other libraries as you wish
 library(tidyverse)
 library(MatchIt)
+library(ggplot2)
+library(cobalt)
 
 # Load ypsps data
 ypsps <- read_csv('data/ypsps.csv')
@@ -47,20 +49,51 @@ Matching is usually used in observational studies to to approximate random assig
 set.seed(6)
 n_obs <- 1254
 #1 is treatment and 0 is control
-assignment <- sample(c(0, 1), num_units, replace = TRUE)
+assignment <- sample(c(0, 1), n_obs, replace = TRUE)
 
 
 # Choose a baseline covariate (use dplyr for this)
 #Let's go with college
 
 # Visualize the distribution by treatment/control (ggplot)
-visualize_df<-data.frame(assignment, ypsps$college)
-ggplot(df, aes(x = baseline_covariate, fill = assignment)) +
+visualize_df<-data.frame(assignment, ypsps$student_vote)
+ggplot(visualize_df, aes(x = ypsps.student_vote, fill = assignment)) +
   geom_bar(position = "dodge", width = 0.5) +
-  labs(x = "Baseline Covariate", y = "Count", fill = "Assignment") +
-  ggtitle("Distribution of Covariate by Treatment/Control Condition")
+  labs(x = "student vote", y = "Count", fill = "Assignment") +
+  ggtitle("Distribution of Student Vote Covariate by Treatment/Control Condition")
 
 # Simulate this 10,000 times (monte carlo simulation - see R Refresher for a hint)
+# Function to simulate data and calculate balance
+simulate_balance <- function() {
+  # Random assignment of treatment/control (1 for treatment, 0 for control)
+  assignment <- sample(c(0, 1), n_obs, replace = TRUE)
+  
+  # Choose a baseline covariate using dplyr
+  # For simplicity, I'll generate a random distribution of 'college' here
+  college <- sample(c("Yes", "No"), n_obs, replace = TRUE)
+  
+  # Calculate balance
+  balance <- table(assignment, college)
+  prop_treatment_yes <- balance[2, "Yes"] / sum(balance[2, ])
+  prop_control_yes <- balance[1, "Yes"] / sum(balance[1, ])
+  
+  return(c(prop_treatment_yes = prop_treatment_yes, prop_control_yes = prop_control_yes))
+}
+
+# Simulate 10,000 times
+simulations <- replicate(10000, simulate_balance())
+
+# Convert results to a data frame for visualization
+balance_df <- data.frame(t(simulations))
+
+# Visualize the distribution of treatment/control balance
+ggplot(balance_df, aes(x = prop_treatment_yes, y = prop_control_yes)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  labs(x = "Proportion of Treatment with Student vote='Yes'",
+       y = "Proportion of Control with Student Vote='Yes'",
+       title = "Balance of Student Vote Covariate across Treatment and Control Groups") +
+  theme_minimal()
 ```
 
 ## Questions
@@ -68,7 +101,7 @@ ggplot(df, aes(x = baseline_covariate, fill = assignment)) +
     \item \textbf{What do you see across your simulations? Why does independence of treatment assignment and baseline covariates not guarantee balance of treatment assignment and baseline covariates?}
 \end{enumerate}
 
-\textbf{Your Answer}: 
+\textbf{While there is general clustering around the middle (the expected 50/50 odds), there are many times where there is variation that creates an imbalance across the student vote covariate between treatment and control. Therefore, even if independence exists, it only guarantees that, on average, treatment and control groups will be balanced. However, this does NOT guarantee that any given world state is balanced across these groups because of the influence of chance.}
 
 # Propensity Score Matching
 
@@ -77,10 +110,14 @@ Select covariates that you think best represent the "true" model predicting whet
 
 ```{r}
 # Select covariates that represent the "true" model for selection, fit model
-
+select_df<-ypsps%>%select(student_LifeWish, student_GPA, student_Race, student_Knowledge, student_SchClub, parent_HHInc, parent_EducHH, parent_EducW, parent_Knowledge, parent_OwnHome, college)
+select_covs<-select_df%>%select(-college)
+select_model<-glm(college ~ ., data = select_df, family = binomial)
 # Plot the balance for the top 10 covariates
+balance_stats <- bal.tab(select_covs, treat=select_df$college)
 
 # Report the overall balance and the proportion of covariates that meet the balance threshold
+balance_stats
 ```
 
 ## Simulations
@@ -98,7 +135,8 @@ Henderson/Chatfield argue that an improperly specified propensity score model ca
 
 ```{r}
 # Remove post-treatment covariates
-
+sim_df<-ypsps%>%
+  select(-starts_with("student_1973"))%>%select(-starts_with("student_1982"))
 # Randomly select features
 
 # Simulate random selection of features 10k+ times
@@ -131,7 +169,7 @@ Henderson/Chatfield propose using genetic matching to learn the best weights for
 ```{r}
 # Remove post-treatment covariates
 
-# Randomly select features
+# Randomly select features 
 
 # Simulate random selection of features 10k+ times
 
