@@ -27,6 +27,7 @@ library(tidyverse)
 library(MatchIt)
 library(ggplot2)
 library(cobalt)
+library(WeightIt)
 
 # Load ypsps data
 ypsps <- read_csv('data/ypsps.csv')
@@ -138,15 +139,59 @@ Henderson/Chatfield argue that an improperly specified propensity score model ca
 sim_df<-ypsps%>%
   select(-starts_with("student_1973"))%>%select(-starts_with("student_1982"))
 
-# Randomly select features
+# Randomly select features and simulate random selection - I do this in the same step
+# Number of simulations
+num_simulations <- 10000
 
-# Simulate random selection of features 10k+ times
+# Store results
+simulation_results <- vector("list", length = num_simulations)
+
+# Perform simulations
+for (i in 1:num_simulations) {
+  # Randomly select the number of covariates (between 1 and total available covariates)
+  num_covariates <- sample(1:ncol(sim_df), 1)
+  
+  # Randomly select the choice of covariates
+  selected_covariates <- sample(colnames(sim_df), num_covariates)
+  #create college as separate column
+  college<-sim_df$college
+  
+  # Fit the propensity score model using the randomly selected covariates
+  ps_model <- weightit(formula = college ~ ., data = select(sim_df, all_of(selected_covariates)), method = "ps")
+  
+  # Store the results
+  simulation_results[[i]] <- ps_model
+}
+
+# Check the results
+summary_results <- lapply(simulation_results, summary)
 
 # Fit p-score models and save ATTs, proportion of balanced covariates, and mean percent balance improvement
+atts <- sapply(simulation_results, function(ps_model) ps_model$ATT)
+prop_balanced <- sapply(simulation_results, function(ps_model) mean(ps_model$bal.tab$bal.stat <= 0.1))
 
 # Plot ATT v. proportion
+plot(atts, prop_balanced, pch = 16, col = rgb(0, 0, 0, alpha = 0.3), xlab = "ATT", ylab = "Proportion Balanced")
+abline(lm(prop_balanced ~ atts))
+
 
 # 10 random covariate balance plots (hint try gridExtra)
+
+# Select 10 random simulations
+selected_simulations <- sample(simulation_results, 10)
+
+# Create a list to store balance plots
+balance_plots <- list()
+
+# Plot balance for each selected simulation
+for (i in 1:length(selected_simulations)) {
+  ps_model <- selected_simulations[[i]]
+  balance_plots[[i]] <- balance.plot(ps_model, maxcat = 10)  # You may adjust maxcat as needed
+}
+
+# Arrange plots using grid.arrange from gridExtra
+grid.arrange(grobs = balance_plots, ncol = 2)  # You can adjust ncol as needed
+
 # Note: ggplot objects are finnicky so ask for help if you're struggling to automatically create them; consider using functions!
 ```
 
@@ -169,7 +214,8 @@ Henderson/Chatfield propose using genetic matching to learn the best weights for
 
 ```{r}
 # Remove post-treatment covariates
-
+sim_df<-ypsps%>%
+  select(-starts_with("student_1973"))%>%select(-starts_with("student_1982"))
 # Randomly select features 
 
 # Simulate random selection of features 10k+ times
