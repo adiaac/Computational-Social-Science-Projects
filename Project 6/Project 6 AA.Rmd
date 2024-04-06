@@ -28,6 +28,10 @@ library(MatchIt)
 library(ggplot2)
 library(cobalt)
 library(WeightIt)
+library(gridExtra)
+library(dplyr)
+
+setwd("/Users/alexadia/Documents/GitHub/Computational-Social-Science-Projects/Project 6")
 
 # Load ypsps data
 ypsps <- read_csv('data/ypsps.csv')
@@ -54,7 +58,7 @@ assignment <- sample(c(0, 1), n_obs, replace = TRUE)
 
 
 # Choose a baseline covariate (use dplyr for this)
-#Let's go with college
+#Let's go with student vote
 
 # Visualize the distribution by treatment/control (ggplot)
 visualize_df<-data.frame(assignment, ypsps$student_vote)
@@ -134,76 +138,120 @@ Henderson/Chatfield argue that an improperly specified propensity score model ca
 
 \textbf{Note: There are lots of post-treatment covariates in this dataset (about 50!)! You need to be careful not to include these in the pre-treatment balancing. Many of you are probably used to selecting or dropping columns manually, or positionally. However, you may not always have a convenient arrangement of columns, nor is it fun to type out 50 different column names. Instead see if you can use dplyr 1.0.0 functions to programatically drop post-treatment variables (\href{https://www.tidyverse.org/blog/2020/03/dplyr-1-0-0-select-rename-relocate/}{here} is a useful tutorial).}
 
+
+Note: I tried for hours to do this mean percent improvement stuff but couldn't figure it out. Sorry!
 ```{r}
-# Remove post-treatment covariates
 sim_df<-ypsps%>%
-  select(-starts_with("student_1973"))%>%select(-starts_with("student_1982"))
+  select(-starts_with("student_1973"))%>%select(-starts_with("student_1982"))%>%select(-interviewid, -parent_GPHighSchoolPlacebo, -parent_HHCollegePlacebo)
 
-# Randomly select features and simulate random selection - I do this in the same step
-# Number of simulations
-num_simulations <- 10000
+starter_df<-sim_df%>%select(-student_ppnscal)
 
-# Store results
-simulation_results <- vector("list", length = num_simulations)
 
-# Perform simulations
+
+available_covariates <- sim_df%>%select(-college, -student_ppnscal)
+  
+num_simulations<-50t0 #will rerun this weekend with correct sims
+
+#I did try to get the pre-smd scores to figure out the percentages
+means_treatment_orig <- colMeans(starter_df[starter_df$college == 1, -1])
+means_control_orig <- colMeans(starter_df[starter_df$college == 0, -1])
+sds_treatment_orig <- apply(starter_df[starter_df$college == 1, -1], 2, sd)
+sds_control_orig <- apply(starter_df[starter_df$college == 0, -1], 2, sd)
+
+smd_before <- (means_treatment_orig - means_control_orig) / sqrt((sds_treatment_orig^2 + sds_control_orig^2) / 2)
+smd_before <- as.data.frame(smd_before)
+
+# Create an empty data frame to store results
+results <- data.frame(ATT = numeric(num_simulations), Prop_Cov=numeric(num_simulations))
+
+# get simulations
 for (i in 1:num_simulations) {
-  # Randomly select the number of covariates (between 1 and total available covariates)
-  num_covariates <- sample(1:ncol(sim_df), 1)
+  # Set seed for reproducibility, incrementing by i
+  set.seed(6 + i)
   
-  # Randomly select the choice of covariates
-  selected_covariates <- sample(colnames(sim_df), num_covariates)
-  #create college as separate column
-  college<-sim_df$college
+  # Randomly select 5 covariates
+  selected_covariates <- sample(available_covariates, 5)
   
-  # Fit the propensity score model using the randomly selected covariates
-  ps_model <- weightit(formula = college ~ ., data = select(sim_df, all_of(selected_covariates)), method = "ps")
+  # Create formula for matchit
+  formula <- as.formula(paste("college ~", paste(selected_covariates, collapse = "+")))
+
+    # Perform propensity score matching
+  matched_data <- matchit(formula, data = sim_df, method = "nearest", replace=TRUE)
   
-  # Store the results
-  simulation_results[[i]] <- ps_model
+  #extract the matched data - need this because it's actually kind of difficult to get the differences from the matchit object :(
+  postmatch_data<-match.data(matched_data)
+
+  #manually calculate the ATT because I can't figure out how to do it the elegant way
+  treated <- postmatch_data$student_ppnscal[postmatch_data$college==1]
+  control <- postmatch_data$student_ppnscal[postmatch_data$college==0]
+  ATT <- mean(treated)-mean(control)
+  
+  means_treatment <- colMeans(postmatch_data[postmatch_data$college == 1, -1])
+means_control <- colMeans(postmatch_data[postmatch_data$college == 0, -1])
+sds_treatment <- apply(postmatch_data[postmatch_data$college == 1, -1], 2, sd)
+sds_control <- apply(postmatch_data[postmatch_data$college == 0, -1], 2, sd)
+
+# Calculate standardized mean differences
+smd <- (means_treatment - means_control) / sqrt((sds_treatment^2 + sds_control^2) / 2)
+smd<-as.data.frame(smd)%>%head(-2)
+abs_smd <- abs(smd)
+#proportion of covariates
+count <- sum(abs_smd$smd < 0.1)
+total<-nrow(abs_smd)
+prop_cov<-count/total
+
+
+  # Store results in the data frame
+results[i, "ATT"] <- ATT
+results[i, "Prop_Cov"] <- prop_cov
 }
 
-# Check the results
-summary_results <- lapply(simulation_results, summary)
+#plot
+ggplot(results, aes(x = Prop_Cov, y = ATT)) +
+  geom_point(alpha = 0.5) +  # Add transparency to avoid overplotting
+  labs(x = "Proportion of Covariates", y = "ATT") +  # Label axes
+  ggtitle("Scatterplot of ATTs vs. Balanced Covariate Proportions")  # Title of the plot
 
-# Fit p-score models and save ATTs, proportion of balanced covariates, and mean percent balance improvement
-atts <- sapply(simulation_results, function(ps_model) ps_model$ATT)
-prop_balanced <- sapply(simulation_results, function(ps_model) mean(ps_model$bal.tab$bal.stat <= 0.1))
-
-# Plot ATT v. proportion
-plot(atts, prop_balanced, pch = 16, col = rgb(0, 0, 0, alpha = 0.3), xlab = "ATT", ylab = "Proportion Balanced")
-abline(lm(prop_balanced ~ atts))
-
-
-# 10 random covariate balance plots (hint try gridExtra)
-
-# Select 10 random simulations
-selected_simulations <- sample(simulation_results, 10)
-
-# Create a list to store balance plots
-balance_plots <- list()
-
-# Plot balance for each selected simulation
-for (i in 1:length(selected_simulations)) {
-  ps_model <- selected_simulations[[i]]
-  balance_plots[[i]] <- balance.plot(ps_model, maxcat = 10)  # You may adjust maxcat as needed
-}
-
-# Arrange plots using grid.arrange from gridExtra
-grid.arrange(grobs = balance_plots, ncol = 2)  # You can adjust ncol as needed
-
-# Note: ggplot objects are finnicky so ask for help if you're struggling to automatically create them; consider using functions!
 ```
 
-## Questions
+```{r}
+#simulation graphs
+graph_sims<-10
+
+graph_list <- list()
+
+for (i in 1:graph_sims) {
+  # Set seed for reproducibility, incrementing by i
+  set.seed(6 + i)
+    # Randomly select 5 covariates
+  selected_covariates <- sample(available_covariates, 5)
+  
+  # Create formula for matchit
+  formula <- as.formula(paste("college ~", paste(selected_covariates, collapse = "+")))
+
+    # Perform propensity score matching
+  matched_data <- matchit(formula, data = sim_df, method = "nearest", replace=TRUE)
+  
+  m.out<-match.data(matched_data)
+  
+  graph<-love.plot(m.out, treat=m.out$college, binary = "std", thresholds = c(m = .1))
+  
+graph_list[[i]] <- graph
+  
+}
+
+grid.arrange(grobs = graph_list, nrow = 2)
+
+```
+## Questions (Note: Answering theoretically for some because I didn't do very well with the code this time)
 
 \begin{enumerate}
     \item \textbf{How many simulations resulted in models with a higher proportion of balanced covariates? Do you have any concerns about this?}
-    \item \textbf{Your Answer}:
+    \item \textbf{Your Answer}: There are going to be multiple simulations where models will not necessarily have a higher proportion of balanced covariates. I would guess this is partly due to the fact that the matching covariates can be incorrectly specified and thus yields suboptimal results the further the matched covariates are from the "true" set of covarataes that should feed into the match.
     \item \textbf{Analyze the distribution of the ATTs. Do you have any concerns about this distribution?}
-    \item \textbf{Your Answer:}
+    \item \textbf{Your Answer:}Yes, the ATTs can highly depend on which set of covariates are selected as part of the 
     \item \textbf{Do your 10 randomly chosen covariate balance plots produce similar numbers on the same covariates? Is it a concern if they do not?}
-    \item \textbf{Your Answer:}
+    \item \textbf{Your Answer:} Not necessarily! This is concerning, because it means the end-covariate balancing is dependent on which covariates are selected as the ones to use to match the data. I believe this can probably be addressed by the use of doubly robust methods (at least in a way that is better than just matching). 
 \end{enumerate}
 
 # Matching Algorithm of Your Choice
@@ -215,30 +263,101 @@ Henderson/Chatfield propose using genetic matching to learn the best weights for
 ```{r}
 # Remove post-treatment covariates
 sim_df<-ypsps%>%
-  select(-starts_with("student_1973"))%>%select(-starts_with("student_1982"))
-# Randomly select features 
+  select(-starts_with("student_1973"))%>%select(-starts_with("student_1982"))%>%select(-interviewid, -parent_GPHighSchoolPlacebo, -parent_HHCollegePlacebo)
 
-# Simulate random selection of features 10k+ times
+starter_df<-sim_df%>%select(-student_ppnscal)
 
-# Fit  models and save ATTs, proportion of balanced covariates, and mean percent balance improvement
+available_covariates <- sim_df%>%select(-college, -student_ppnscal)
+  
+# Create an empty data frame to store results
+results <- data.frame(ATT = numeric(num_simulations), Prop_Cov=numeric(num_simulations))
 
-# Plot ATT v. proportion
+# get simulations
+for (i in 1:num_simulations) {
+  # Set seed for reproducibility, incrementing by i
+  set.seed(206 + i)
+  
+  # Randomly select 5 covariates
+  selected_covariates <- sample(available_covariates, 5)
+  
+  # Create formula for matchit
+  formula <- as.formula(paste("college ~", paste(selected_covariates, collapse = "+")))
 
-# 10 random covariate balance plots (hint try gridExtra)
-# Note: ggplot objects are finnicky so ask for help if you're struggling to automatically create them; consider using functions!
+    # Perform propensity score matching
+  matched_data <- matchit(formula, data = sim_df, method = "nearest", replace=TRUE)
+  
+  #extract the matched data - need this because it's actually kind of difficult to get the differences from the matchit object :(
+  postmatch_data<-match.data(matched_data)
+
+  #manually calculate the ATT because I can't figure out how to do it the elegant way
+  treated <- postmatch_data$student_ppnscal[postmatch_data$college==1]
+  control <- postmatch_data$student_ppnscal[postmatch_data$college==0]
+  ATT <- mean(treated)-mean(control)
+  
+  means_treatment <- colMeans(postmatch_data[postmatch_data$college == 1, -1])
+means_control <- colMeans(postmatch_data[postmatch_data$college == 0, -1])
+sds_treatment <- apply(postmatch_data[postmatch_data$college == 1, -1], 2, sd)
+sds_control <- apply(postmatch_data[postmatch_data$college == 0, -1], 2, sd)
+
+# Calculate standardized mean differences
+smd <- (means_treatment - means_control) / sqrt((sds_treatment^2 + sds_control^2) / 2)
+smd<-as.data.frame(smd)%>%head(-2)
+abs_smd <- abs(smd)
+#proportion of covariates
+count <- sum(abs_smd$smd < 0.1)
+total<-nrow(abs_smd)
+prop_cov<-count/total
+
+
+  # Store results in the data frame
+results[i, "ATT"] <- ATT
+results[i, "Prop_Cov"] <- prop_cov
+}
+
+#plot
+ggplot(results, aes(x = Prop_Cov, y = ATT)) +
+  geom_point(alpha = 0.5) +  # Add transparency to avoid overplotting
+  labs(x = "Proportion of Covariates", y = "ATT") +  # Label axes
+  ggtitle("Scatterplot of ATTs vs. Balanced Covariate Proportions")  # Title of the plot
+
 ```
 
 ```{r}
-# Visualization for distributions of percent improvement
-```
+#simulation graphs
+graph_sims<-10
 
+graph_list <- list()
+
+for (i in 1:graph_sims) {
+  # Set seed for reproducibility, incrementing by i
+  set.seed(6 + i)
+    # Randomly select 5 covariates
+  selected_covariates <- sample(available_covariates, 5)
+  
+  # Create formula for matchit
+  formula <- as.formula(paste("college ~", paste(selected_covariates, collapse = "+")))
+
+    # Perform propensity score matching
+  matched_data <- matchit(formula, data = sim_df, method = "genetic", replace=TRUE)
+  
+  m.out<-match.data(matched_data)
+  
+  graph<-love.plot(m.out, treat=m.out$college, binary = "std", thresholds = c(m = .1))
+  
+graph_list[[i]] <- graph
+  
+}
+
+grid.arrange(grobs = graph_list, nrow = 2)
+
+```
 ## Questions
 
 \begin{enumerate}
     \item \textbf{Does your alternative matching method have more runs with higher proportions of balanced covariates?}
-    \item \textbf{Your Answer:}
+    \item \textbf{Your Answer:} I would expect genetic matching to provide more potential "upside" in terms of getting more balanced covariates than simple nearest neighbor.
     \item \textbf{Use a visualization to examine the change in the distribution of the percent improvement in balance in propensity score matching vs. the distribution of the percent improvement in balance in your new method. Which did better? Analyze the results in 1-2 sentences.}
-    \item \textbf{Your Answer:}
+    \item \textbf{Your Answer:} I would expect the genetic matching to improve balanec more often than nearest neighbor propensity score matching, again aligning with the findings from the paper. Genetic matching allows some complexity in the distance calculation than simple nearest neighbor analysis does not. 
 \end{enumerate}
 
 \textbf{Optional:} Looking ahead to the discussion questions, you may choose to model the propensity score using an algorithm other than logistic regression and perform these simulations again, if you wish to explore the second discussion question further.
@@ -247,7 +366,7 @@ sim_df<-ypsps%>%
 
 \begin{enumerate}
     \item Why might it be a good idea to do matching even if we have a randomized or as-if-random design?
-    \item \textbf{Your Answer:}
+    \item \textbf{Your Answer:} Even with randomization, there are differences that may arise in covariate balance simply because of chance; randomization may again guarantee balance on average but not balance in any iteration we observe (including in a given trial). Matching (or some other adjustment technique) is still useful for achieving balance to address the by-chance variation in balance that can arise even with randomization (or pseudo-randomization).
     \item The standard way of estimating the propensity score is using a logistic regression to estimate probability of treatment. Given what we know about the curse of dimensionality, do you think there might be advantages to using other machine learning algorithms (decision trees, bagging/boosting forests, ensembles, etc.) to estimate propensity scores instead?
-    \item \textbf{Your Answer:}
+    \item \textbf{Your Answer:} Using a logistic regression with a set number of covariates would generate a propensity score using user-selected covariates (or every covariate). Obviously, not every covariate may actually be important in matching observations, and researcher-selected covariates may be assumed to eb important when they actually aren't. Machine learning methods can take data-driven approaches to the selection of matching covariates in a way that optimizes the generation of propensity scores in a way the traditional methods do not.
 \end{enumerate}
