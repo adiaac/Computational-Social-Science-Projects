@@ -20,7 +20,7 @@ pacman::p_load(# Tidyverse packages including dplyr and ggplot2
 set.seed(44)
 
 # load data
-medicaid_expansion <- read_csv('../data/medicaid_expansion.csv')
+medicaid_expansion <- read_csv('/Users/alexadia/Documents/GitHub/Computational-Social-Science-Projects/Project 7/data/medicaid_expansion.csv')
 ```
 
 # Introduction
@@ -54,14 +54,79 @@ Create plots and provide 1-2 sentence analyses to answer the following questions
 - Which states had the highest uninsured rates prior to 2014? The lowest?
 - Which states were home to most uninsured Americans prior to 2014? How about in the last year in the data set? **Note**: 2010 state population is provided as a variable to answer this question. In an actual study you would likely use population estimates over time, but to simplify you can assume these numbers stay about the same.
 
+Answer: Before 2014, Massachusetts, Hawaii, and Minnesota had the lowest uninsured rate, while New Mexico, Florida, and Nevada had the highest uninsurance rates. 
+
 ```{r}
 # highest and lowest uninsured rates
+ggplot(medicaid_expansion, aes(x = year, y = uninsured_rate, group = State, color = State)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Uninsured Rate Over Time by State",
+       x = "Year",
+       y = "Uninsured Rate") +
+  theme_minimal()+
+  theme(legend.position = "bottom",   # Placing legend at the bottom
+        legend.box.margin = margin(0,0,0,0),  # Adjusting legend box margin
+        legend.spacing.x = unit(0.1, 'cm'),  # Adjusting horizontal spacing between legend items
+        legend.spacing.y = unit(0.1, 'cm'),  # Adjusting vertical spacing between legend items
+        plot.margin = margin(1, 5, 1, 5, "cm"))  # Adjusting plot margins (top, right, bottom, left)
+
+
+# Filter dataframe to include only years before 2014
+filtered_data <- medicaid_expansion %>%
+  filter(year < 2014)
+
+# Calculate average uninsured rate grouped by state
+average_uninsured_rate <- filtered_data %>%
+  group_by(State) %>%
+  summarise(average_uninsured_rate = mean(uninsured_rate))%>%
+  arrange(average_uninsured_rate)  # Sort by average uninsured rate
+
+# Plotting
+ggplot(average_uninsured_rate, aes(x = State, y = average_uninsured_rate)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Average Uninsured Rate Before 2014 by State",
+       x = "State",
+       y = "Average Uninsured Rate") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
+Answer: Before expansion and averaging the uninsured rate in all pre-expansion years, the states with the highest number of uninsured residents are California, Texas, and Florida.  
 ```{r}
-# most uninsured Americans
+# most uninsured Americans pre-2014
+n_population<-medicaid_expansion%>%
+  group_by(State)%>%summarise(population=mean(population))
+
+n_uninsured <- average_uninsured_rate %>%
+  arrange(State)%>%mutate(n_pop=n_population$population)%>%mutate(n_unins=n_pop*average_uninsured_rate)%>%arrange(n_unins)
+
+#plot
+ggplot(n_uninsured, aes(x = State, y = n_unins)) +
+  geom_bar(stat = "identity", fill = "red") +
+  labs(title = "Average Number of Uninsured Before 2014 by State",
+       x = "State",
+       y = "Average Uninsured Residents") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
+Answer: In 2020, the states with the highest number of uninsured residents were Texas, California, and Florida.
+```{r}
+# check in the last year of the dataset
+last_year_data<-medicaid_expansion%>%filter(year==2020)
+uninsured_2020 <- last_year_data %>%
+  arrange(State)%>%mutate(n_pop=n_population$population)%>%mutate(n_unins=n_pop*uninsured_rate)%>%arrange(n_unins)
+
+#plot
+ggplot(uninsured_2020, aes(x = State, y = n_unins)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Average Number of Uninsured in 2020 by State",
+       x = "State",
+       y ="Uninsured Residents") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
 
 # Difference-in-Differences Estimation
 
@@ -72,24 +137,57 @@ Do the following:
 - Choose a state that adopted the Medicaid expansion on January 1, 2014 and a state that did not. **Hint**: Do not pick Massachusetts as it passed a universal healthcare law in 2006, and also avoid picking a state that adopted the Medicaid expansion between 2014 and 2015.
 - Assess the parallel trends assumption for your choices using a plot. If you are not satisfied that the assumption has been met, pick another state and try again (but detail the states you tried).
 
+I tried Oklahoma and didn't love the fit, but Georgia looks a bit better.
 ```{r}
 # Parallel Trends plot
+
+#treated state=kentucky
+did_data<-medicaid_expansion%>%filter(State=="Kentucky"|State=="Georgia")
+
+#plot parallel trends
+ggplot(did_data, aes(x = year, y = uninsured_rate, group = State, color = State)) +
+  geom_line() +
+  geom_point() +
+  geom_vline(xintercept = 2013.5, linetype = "dashed") +  # Vertical line at 2014
+  labs(title = "Parallel Trends Plot: Kentucky vs. Oklahoma",
+       x = "Year",
+       y = "Uninsured Rate",
+       color = "State",
+       linetype = "Medicaid Expansion") +
+  theme_minimal()
 ```
 
 - Estimates a difference-in-differences estimate of the effect of the Medicaid expansion on the uninsured share of the population. You may follow the lab example where we estimate the differences in one pre-treatment and one post-treatment period, or take an average of the pre-treatment and post-treatment outcomes
 
 ```{r}
 # Difference-in-Differences estimation
+pre_treatment <- did_data %>% filter(year < 2014)
+post_treatment <- did_data %>% filter(year >= 2014)
+
+# Calculate the average uninsured rate in the pre-treatment and post-treatment periods for each state
+pre_avg <- pre_treatment %>% group_by(State) %>% summarise(avg_uninsured_rate_pre = mean(uninsured_rate))
+post_avg <- post_treatment %>% group_by(State) %>% summarise(avg_uninsured_rate_post = mean(uninsured_rate))
+
+# Merge the pre-treatment and post-treatment averages
+did_data_results<- merge(pre_avg, post_avg, by = "State")
+
+# Calculate the DiD estimate
+did_data_results <- did_data_results %>%
+  mutate(difference = avg_uninsured_rate_post - avg_uninsured_rate_pre)
+
+did_estimate <- diff(did_data_results$difference)
+did_estimate
+
 ```
 
 
 ## Discussion Questions
 
 - Card/Krueger's original piece utilized the fact that towns on either side of the Delaware river are likely to be quite similar to one another in terms of demographics, economics, etc. Why is that intuition harder to replicate with this data?
-- **Answer**:
+- Different states are likely to have different healthcare environments, including regulations, providers, payers, and public health and social services. For example, insurance providers are locked 
 
 - What are the strengths and weaknesses of using the parallel trends assumption in difference-in-differences estimates?
-- **Answer**:
+- **Answer**: It's helpful as a visual check, but it's easy for folks to hand wave that this looks good when it really shouldn't.
 
 
 # Synthetic Control
@@ -103,13 +201,25 @@ Do the following:
 - Choose a state that adopted the Medicaid expansion after January 1, 2014. Construct a non-augmented synthetic control and plot the results (both pre-treatment fit and post-treatment differences). Also report the average ATT and L2 imbalance.
 
 ```{r}
-# non-augmented synthetic control
+# non-augmented synthetic control - picking Montana and then only picking the states that were never treated. Montana expanded 2015.
+synth1_data<-medicaid_expansion%>%filter(State=="Montana"| is.na(Date_Adopted))%>%mutate(treated=case_when(State=="Montana" & year>2015~ 1, TRUE ~ 0))
+
+nonaugsynth<-augsynth(uninsured_rate ~ treated, State, year, synth1_data,
+                progfunc = "None", scm = T)
+
+nonaug_sum<-summary(nonaugsynth)
+nonaug_sum
+
+plot(nonaug_sum)
 ```
+
 
 - Re-run the same analysis but this time use an augmentation (default choices are Ridge, Matrix Completion, and GSynth). Create the same plot and report the average ATT and L2 imbalance.
 
 ```{r}
 # augmented synthetic control
+augsynth<-multisynth(uninsured_rate~treated, State, year, synth1_data,   fixedeff = T, n_factors = 2)
+summary(gsynth)
 ```
 
 - Plot barplots to visualize the weights of the donors.
