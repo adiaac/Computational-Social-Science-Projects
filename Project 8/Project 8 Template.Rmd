@@ -17,17 +17,18 @@ pacman::p_load(
   ggdag,
   here)
 
-heart_disease <- read_csv(here('heart_disease_tmle.csv'))
+heart_disease <- read_csv('/Users/alexadia/Documents/GitHub/Computational-Social-Science-Projects/Project 8/heart_disease_tmle.csv')
 ```
 
 # Introduction
 
-Heart disease is the leading cause of death in the United States, and treating it properly is an important public health goal. However, it is a complex disease with several different risk factors and potential treatments. Physicians typically recommend changes in diet, increased exercise, and/or medication to treat symptoms, but it is difficult to determine how effective any one of these factors is in treating the disease. In this project, you will explore SuperLearner, Targeted Maximum Likelihood Estimation (TMLE), and Longitudinal Targeted Maximum Likelihood Estimation (LTMLE). Using a simulated dataset, you will explore whether taking blood pressure medication reduces mortality risk. 
+Heart disease is the leading cause of death in the United States, and treating it properly is an important public health goal. However, it is a complex disease with several different risk factors and potential treatments. Physicians typically recommend changes in diet, increased exercise, and/or medication to treat symptoms, but it is difficult to determine how effective any one of these factors is in treating the disease. In this project, you will explore SuperLearner, Targeted Maximum Likelihood Estimation (TMLE), and Longitudinal Targeted Maximum Likelihood Estimation (LTMLE). Using a simulated dataset, you will explore whether taking blood pressure medication reduces mortality risk.
 
 # Data
 
 This dataset was simulated using R (so it does not come from a previous study or other data source). It contains several variables:
 
+```{=tex}
 \begin{itemize}
     \item \textbf{blood\_pressure\_medication}: Treatment indicator for whether the individual took blood pressure medication (0 for control, 1 for treatment)
     \item \textbf{mortality}: Outcome indicator for whether the individual passed away from complications of heart disease (0 for no, 1 for yes)
@@ -44,7 +45,7 @@ This dataset was simulated using R (so it does not come from a previous study or
     \item \textbf{blood\_pressure\_2}: BP measured at time 2
     \item \textbf{blood\_pressure\_medication\_2}: Whether the person took treatment at time period 2 
 \end{itemize}
-
+```
 For the "SuperLearner" and "TMLE" portions, you can ignore any variable that ends in "\_2", we will reintroduce these for LTMLE.
 
 # SuperLearner
@@ -53,6 +54,7 @@ For the "SuperLearner" and "TMLE" portions, you can ignore any variable that end
 
 Fit a SuperLearner model to estimate the probability of someone dying from complications of heart disease, conditional on treatment and the relevant covariates. Do the following:
 
+```{=tex}
 \begin{enumerate}
     \item Choose a library of at least 5 machine learning algorithms to evaluate. \textbf{Note}: We did not cover how to hyperparameter tune constituent algorithms within SuperLearner in lab, but you are free to do so if you like (though not required to for this exercise). 
     \item Split your data into train and test sets.
@@ -60,7 +62,7 @@ Fit a SuperLearner model to estimate the probability of someone dying from compl
     \item Report the risk and coefficient associated with each model, and the performance of the discrete winner and SuperLearner ensemble
     \item Create a confusion matrix and report your overall accuracy, recall, and precision
 \end{enumerate}
-
+```
 ```{r}
 # Fit SuperLearner Model
 
@@ -79,21 +81,23 @@ Fit a SuperLearner model to estimate the probability of someone dying from compl
 
 ## Discussion Questions
 
+```{=tex}
 \begin{enumerate}
     \item Why should we, in general, prefer the SuperLearner ensemble to the discrete winner in cross-validation? Or in other words, what is the advantage of "blending" algorithms together and giving them each weights, rather than just using the single best algorithm (with best being defined as minimizing risk)?
 \end{enumerate}
-
+```
 # Targeted Maximum Likelihood Estimation
 
 ## Causal Diagram
 
 TMLE requires estimating two models:
 
+```{=tex}
 \begin{enumerate}
     \item The outcome model, or the relationship between the outcome and the treatment/predictors, $P(Y|(A,W)$.
     \item The propensity score model, or the relationship between assignment to treatment and predictors $P(A|W)$
 \end{enumerate}
-
+```
 Using ggdag and daggity, draw a directed acylcic graph (DAG) that describes the relationships between the outcome, treatment, and covariates/predictors. Note, if you think there are covariates that are not related to other variables in the dataset, note this by either including them as freestanding nodes or by omitting them and noting omissions in your discussion.
 
 ```{r}
@@ -104,21 +108,23 @@ Using ggdag and daggity, draw a directed acylcic graph (DAG) that describes the 
 
 Use the `tmle` package to estimate a model for the effect of blood pressure medication on the probability of mortality. Do the following:
 
+```{=tex}
 \begin{enumerate}
     \item Use the same SuperLearner library you defined earlier
     \item Use the same outcome model and propensity score model that you specified in the DAG above. If in your DAG you concluded that it is not possible to make a causal inference from this dataset, specify a simpler model and note your assumptions for this step.
     \item Report the average treatment effect and any other relevant statistics
 \end{enumerate}
-
+```
 ## Discussion Questions
 
+```{=tex}
 \begin{enumerate}
     \item What is a "double robust" estimator? Why does it provide a guarantee of consistency if either the outcome model or propensity score model is correctly specified? Or in other words, why does mispecifying one of the models not break the analysis? \textbf{Hint}: When answering this question, think about how your introductory statistics courses emphasized using theory to determine the correct outcome model, and in this course how we explored the benefits of matching.
 \end{enumerate}
-
+```
 # LTMLE Estimation
 
-Now imagine that everything you measured up until now was in "time period 1". Some people either choose not to or otherwise lack access to medication in that time period, but do start taking the medication in time period 2. Imagine we measure covariates like BMI, blood pressure, and cholesterol at that time for everyone in the study (indicated by a "_2" after the covariate name). 
+Now imagine that everything you measured up until now was in "time period 1". Some people either choose not to or otherwise lack access to medication in that time period, but do start taking the medication in time period 2. Imagine we measure covariates like BMI, blood pressure, and cholesterol at that time for everyone in the study (indicated by a "\_2" after the covariate name).
 
 ## Causal Diagram
 
@@ -144,7 +150,8 @@ Use the `ltmle` package for this section. First fit a "naive model" that \textbf
 
 ## Discussion Questions
 
+```{=tex}
 \begin{enumerate}
     \item What sorts of time-dependent confounding should we be especially worried about? For instance, would we be concerned about a running variable for age the same way we might be concerned about blood pressure measured at two different times?
 \end{enumerate}
-
+```
