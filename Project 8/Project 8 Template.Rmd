@@ -67,16 +67,65 @@ Fit a SuperLearner model to estimate the probability of someone dying from compl
 # Fit SuperLearner Model
 
 ## sl lib
+listWrappers()
+library<-c('SL.mean', 'SL.glmnet', 'SL.earth', "SL.lm", "SL.nnet") #picked these arbitrarily
 
 ## Train/Test split
+# need to kick the variables that start with 2 since we ignore for this section
+heart_disease_no2<-heart_disease%>%select(-bmi_2, -chol_2, -blood_pressure_2, -blood_pressure_medication_2)
+#now get split
+set.seed(24)
+heart_disease_split<-initial_split(heart_disease_no2)
+# Declare the training set with rsample::training()
+train <- training(heart_disease_split)
+
+# set training
+y_train <- train %>% 
+  pull(mortality) 
+
+x_train <- train %>%
+  select(-mortality)
+
+# Do the same procedure with the test set
+test <- testing(heart_disease_split)
+
+y_test <- test %>%
+  pull(mortality)
+
+x_test <- test %>%
+  select(-mortality)
 
 ## Train SuperLearner
+sl_q1<- SuperLearner(Y = y_train,
+                         X = x_train,
+                         family = binomial(),
+                         SL.library = library)
 
 ## Risk and Coefficient of each model
+sl_q1
 
 ## Discrete winner and superlearner ensemble performance
 
 ## Confusion Matrix
+
+preds <- predict(sl_q1,
+                 x_test,
+                 onlySL = TRUE)
+
+# start with y_test
+validation <- y_test %>%
+  # add our predictions
+  bind_cols(preds$pred[,1]) %>%
+  # rename columns
+  rename(obs = `...1`,
+         pred = `...2`) %>%
+  mutate(pred = ifelse(pred >= .5, 
+                           1,
+                           0))
+
+head(validation)
+caret::confusionMatrix(as.factor(validation$pred),
+                       as.factor(validation$obs))
 ```
 
 ## Discussion Questions
@@ -84,6 +133,7 @@ Fit a SuperLearner model to estimate the probability of someone dying from compl
 ```{=tex}
 \begin{enumerate}
     \item Why should we, in general, prefer the SuperLearner ensemble to the discrete winner in cross-validation? Or in other words, what is the advantage of "blending" algorithms together and giving them each weights, rather than just using the single best algorithm (with best being defined as minimizing risk)?
+    \item Answer: SuperLearner allows us to avoid the challenge of having to pick a single "best" algorithm by using a suite of them to get to the best estimate - even if there is a clear, dominant and best algorithm, if it is included in the SuperLearner, then that algorithm dominates and you get the same results as if you had used that "best" algorithm alone (assuming a sufficiently large sample). 
 \end{enumerate}
 ```
 # Targeted Maximum Likelihood Estimation
@@ -102,6 +152,14 @@ Using ggdag and daggity, draw a directed acylcic graph (DAG) that describes the 
 
 ```{r}
 # DAG for TMLE
+tmle_dag<-dagify(medication ~ age + race + college + chol + bmi+ income + sex + blood_pressure, 
+                 mortality ~ medication + age + income + race,
+                 exposure = "medication",
+                 outcome="mortality"
+)
+ggdag(tmle_dag)
+
+#pretty_dag(tmle_dag) - didnt work but maybe could look back
 ```
 
 ## TMLE Estimation
@@ -114,6 +172,21 @@ Use the `tmle` package to estimate a model for the effect of blood pressure medi
     \item Use the same outcome model and propensity score model that you specified in the DAG above. If in your DAG you concluded that it is not possible to make a causal inference from this dataset, specify a simpler model and note your assumptions for this step.
     \item Report the average treatment effect and any other relevant statistics
 \end{enumerate}
+```
+
+```{r}
+#define models
+outcome_model <- as.formula(mortality ~ blood_pressure_medication + age + simplified_race + income_thousands)
+
+propensity_model <- as.formula(blood_pressure_medication ~ age + sex_at_birth + simplified_race + income_thousands + college_educ + bmi + chol + blood_pressure)
+
+tmle_result <- tmle(Y = heart_disease_no2$mortality,
+                    A =heart_disease_no2$blood_pressure_medication,
+                    W = model.matrix(outcome_model, heart_disease_no2),
+                    Q.SL.library = library,
+                    g.SL.library = library,
+                    verbose = TRUE)
+
 ```
 ## Discussion Questions
 
@@ -134,8 +207,35 @@ Update your causal diagram to incorporate this new information. \textbf{Note}: I
 
 \textbf{Hint}: Keep in mind that any of the variables that end in "\_2" are likely affected by both the previous covariates and the first treatment when drawing your DAG.
 
-```{r}
-# DAG for TMLE
+
+```{=tex}
+\begin{tikzpicture}
+\node (v0) at (-1.62,-1.53) {Blood Pressure Medication};
+\node (v1) at (-0.606,-0.394) {Blood Pressure};
+\node (v2) at (-0.714,-0.797) {Age};
+\node (v3) at (-1.40,0.165) {BMI};
+\node (v4) at (0.604,-0.687) {Education};
+\node (v5) at (-0.282,-0.151) {Income};
+\node (v6) at (0.361,-1.51) {Mortality};
+\node (v7) at (-0.406,0.572) {Race};
+\node (v8) at (0.357,-0.659) {Sex};
+\draw [->] (v0) edge (v6);
+\draw [->] (v1) edge (v0);
+\draw [->] (v1) edge (v6);
+\draw [->] (v2) edge (v0);
+\draw [->] (v2) edge (v6);
+\draw [->] (v3) edge (v0);
+\draw [->] (v4) edge (v6);
+\draw [->] (v5) edge (v0);
+\draw [->] (v5) edge (v6);
+\draw [->] (v7) edge (v0);
+\draw [->] (v7) edge (v1);
+\draw [->] (v7) edge (v3);
+\draw [->] (v7) edge (v5);
+\draw [->] (v7) edge (v6);
+\draw [->] (v8) edge (v6);
+\end{tikzpicture}
+
 ```
 
 ## LTMLE Estimation
