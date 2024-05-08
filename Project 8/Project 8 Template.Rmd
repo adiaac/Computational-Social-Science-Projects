@@ -17,7 +17,8 @@ pacman::p_load(
   ggdag,
   here)
 
-heart_disease <- read_csv('/Users/alexadia/Documents/GitHub/Computational-Social-Science-Projects/Project 8/heart_disease_tmle.csv')
+#heart_disease <- read_csv('/Users/alexadia/Documents/GitHub/Computational-Social-Science-Projects/Project 8/heart_disease_tmle.csv')
+heart_disease <- read_csv('D:/GitHub/Computational-Social-Science-Projects/Project 8/heart_disease_tmle.csv') #windows
 ```
 
 # Introduction
@@ -176,17 +177,19 @@ Use the `tmle` package to estimate a model for the effect of blood pressure medi
 
 ```{r}
 #define models
-outcome_model <- as.formula(mortality ~ blood_pressure_medication + age + simplified_race + income_thousands)
+Y<-heart_disease_no2$mortality
+A<-heart_disease_no2$blood_pressure_medication
+W<-heart_disease_no2%>%select(age, income_thousands, simplified_race)
 
-propensity_model <- as.formula(blood_pressure_medication ~ age + sex_at_birth + simplified_race + income_thousands + college_educ + bmi + chol + blood_pressure)
-
-tmle_result <- tmle(Y = heart_disease_no2$mortality,
-                    A =heart_disease_no2$blood_pressure_medication,
-                    W = model.matrix(outcome_model, heart_disease_no2),
+tmle_result <- tmle(Y=Y,
+                    A=A,
+                    W=W,
+                    family="binomial",
                     Q.SL.library = library,
-                    g.SL.library = library,
-                    verbose = TRUE)
+                    g.SL.library = library)
 
+summary(tmle_result)
+tmle_result$estimates$ATE
 ```
 ## Discussion Questions
 
@@ -209,32 +212,7 @@ Update your causal diagram to incorporate this new information. \textbf{Note}: I
 
 
 ```{=tex}
-\begin{tikzpicture}
-\node (v0) at (-1.62,-1.53) {Blood Pressure Medication};
-\node (v1) at (-0.606,-0.394) {Blood Pressure};
-\node (v2) at (-0.714,-0.797) {Age};
-\node (v3) at (-1.40,0.165) {BMI};
-\node (v4) at (0.604,-0.687) {Education};
-\node (v5) at (-0.282,-0.151) {Income};
-\node (v6) at (0.361,-1.51) {Mortality};
-\node (v7) at (-0.406,0.572) {Race};
-\node (v8) at (0.357,-0.659) {Sex};
-\draw [->] (v0) edge (v6);
-\draw [->] (v1) edge (v0);
-\draw [->] (v1) edge (v6);
-\draw [->] (v2) edge (v0);
-\draw [->] (v2) edge (v6);
-\draw [->] (v3) edge (v0);
-\draw [->] (v4) edge (v6);
-\draw [->] (v5) edge (v0);
-\draw [->] (v5) edge (v6);
-\draw [->] (v7) edge (v0);
-\draw [->] (v7) edge (v1);
-\draw [->] (v7) edge (v3);
-\draw [->] (v7) edge (v5);
-\draw [->] (v7) edge (v6);
-\draw [->] (v8) edge (v6);
-\end{tikzpicture}
+
 
 ```
 
@@ -246,6 +224,7 @@ Use the `ltmle` package for this section. First fit a "naive model" that \textbf
 ## Naive Model (no time-dependent confounding) estimate
 
 ## LTMLE estimate
+ltmle(data, Anodes=c("A1", "A2"), Lnodes="L", Ynodes="Y", abar=c(1, 1), SL.library = sl_libs)
 ```
 
 ## Discussion Questions
@@ -253,5 +232,6 @@ Use the `ltmle` package for this section. First fit a "naive model" that \textbf
 ```{=tex}
 \begin{enumerate}
     \item What sorts of time-dependent confounding should we be especially worried about? For instance, would we be concerned about a running variable for age the same way we might be concerned about blood pressure measured at two different times?
+    \item 
 \end{enumerate}
 ```
