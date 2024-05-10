@@ -19,6 +19,7 @@ pacman::p_load(
 
 #heart_disease <- read_csv('/Users/alexadia/Documents/GitHub/Computational-Social-Science-Projects/Project 8/heart_disease_tmle.csv')
 heart_disease <- read_csv('D:/GitHub/Computational-Social-Science-Projects/Project 8/heart_disease_tmle.csv') #windows
+
 ```
 
 # Introduction
@@ -196,6 +197,7 @@ tmle_result$estimates$ATE
 ```{=tex}
 \begin{enumerate}
     \item What is a "double robust" estimator? Why does it provide a guarantee of consistency if either the outcome model or propensity score model is correctly specified? Or in other words, why does mispecifying one of the models not break the analysis? \textbf{Hint}: When answering this question, think about how your introductory statistics courses emphasized using theory to determine the correct outcome model, and in this course how we explored the benefits of matching.
+        \item Answer: A doubly robust estimator combines two approaches to estimating the causal model, which is helpful in avoiding the consequences of model misspecification using a single approach. With the doubly robust estimator, even if one approach is misspecified, we can get a consistent estimator of the effect as the estimator will upweight the outputs of the correctly specified approach. If there is no misspecification, our estimator is as efficient as just using the single (correct approach. 
 \end{enumerate}
 ```
 # LTMLE Estimation
@@ -210,21 +212,43 @@ Update your causal diagram to incorporate this new information. \textbf{Note}: I
 
 \textbf{Hint}: Keep in mind that any of the variables that end in "\_2" are likely affected by both the previous covariates and the first treatment when drawing your DAG.
 
-
-```{=tex}
-
+```{r}
+# DAG for TMLE
+ltmle_dag<-dagify(medication ~ age + race + college + chol + bmi+ income + sex + blood_pressure, 
+                 mortality ~ medication + age + income + race+chol+bmi+blood_pressure+blood_pressure_2+chol_2+bmi_2+medication_2,
+                 blood_pressure_2~blood_pressure+medication,
+                 chol_2~chol+medication,
+                 bmi_2~bmi+medication,
+                 medication_2~ age + race + college + chol + bmi+ income + sex + blood_pressure+blood_pressure_2+chol_2+bmi_2+medication,
+                 exposure = c("medication", "medication_2"),
+                 outcome="mortality"
+)
+ggdag(ltmle_dag) #sorry Kasey this is a chaotic mess
 
 ```
+
 
 ## LTMLE Estimation
 
 Use the `ltmle` package for this section. First fit a "naive model" that \textbf{does not} control for the time-dependent confounding. Then run a LTMLE model that does control for any time dependent confounding. Follow the same steps as in the TMLE section. Do you see a difference between the two estimates?
 
 ```{r}
+#LTMLE setup
+#reorder dataset in order of W, A1, L, A2, Y
+ltmle_data<-heart_disease%>%select(age, simplified_race, income_thousands, chol, bmi, blood_pressure, blood_pressure_medication, bmi_2, chol_2, blood_pressure_2, blood_pressure_medication_2, mortality)
+#define nodes - don't think you need to define W because it just assumes whatever is to the left of A1 is W
+Anodes<-c("blood_pressure_medication", "blood_pressure_medication_2")
+Ynodes<-"mortality"
+Lnodes<-c("bmi_2", "chol_2", "blood_pressure_2")
+
 ## Naive Model (no time-dependent confounding) estimate
+ltmle_naive_data<-ltmle_data%>%select(-bmi_2, -chol_2, -blood_pressure_2)
+ltmle_naive<-ltmle(ltmle_naive_data, Anodes=Anodes, Ynodes=Ynodes, abar=c(1, 1), SL.library=library)
+summary(ltmle_naive)
 
 ## LTMLE estimate
-ltmle(data, Anodes=c("A1", "A2"), Lnodes="L", Ynodes="Y", abar=c(1, 1), SL.library = sl_libs)
+ltmle<-ltmle(ltmle_data, Anodes=Anodes, Lnodes=Lnodes, Ynodes=Ynodes, abar=c(1, 1), SL.library = library)
+summary(ltmle)
 ```
 
 ## Discussion Questions
@@ -232,6 +256,6 @@ ltmle(data, Anodes=c("A1", "A2"), Lnodes="L", Ynodes="Y", abar=c(1, 1), SL.libra
 ```{=tex}
 \begin{enumerate}
     \item What sorts of time-dependent confounding should we be especially worried about? For instance, would we be concerned about a running variable for age the same way we might be concerned about blood pressure measured at two different times?
-    \item 
+    \item Answer: We should be most worried about confounders who can experience rapid changes over the given time period of measurement in a way that may impact the exposure-outcome relationship. In the example given, becoming incremently older is unlikely to be very impactful unless a patient is at the Medicare cutoff (i.e., is about to become 65); however, blood pressure can change rapidly over time if, for example, heart failure or a myocardial infarction is approaching, making it more important to address time-dependent confounding. Ultimately, drawing the DAG and making your assumptions about the relationship clear is most important.
 \end{enumerate}
 ```
